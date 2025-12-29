@@ -41,7 +41,9 @@ for company in company_sheets:
     accrual_row = df[df[metric_col].astype(str).str.contains("accrual", case=False, na=False)]
 
     if not accrual_row.empty:
-        ax1.plot(year_cols, accrual_row.iloc[0, 1:], marker='o', label=company)
+        # Convert values to numeric, forcing errors to NaN to prevent the plot crash
+        y_values = pd.to_numeric(accrual_row.iloc[0, 1:], errors='coerce')
+        ax1.plot(year_cols, y_values, marker='o', label=company)
 
 ax1.set_title("Accrual Trend Comparison")
 ax1.set_xlabel("Year")
@@ -62,7 +64,9 @@ for company in company_sheets:
 
     if not scores.empty:
         for _, row in scores.iterrows():
-            ax2.plot(df.columns[1:], row[1:], marker='o', label=f"{company} - {row[metric_col]}")
+            # Convert values to numeric to avoid matplotlib float conversion error
+            y_values = pd.to_numeric(row[1:], errors='coerce')
+            ax2.plot(df.columns[1:], y_values, marker='o', label=f"{company} - {row[metric_col]}")
 
 ax2.set_title("Forensic Scores")
 ax2.set_ylabel("Score Value")
@@ -86,7 +90,8 @@ for company in company_sheets:
     revenue = df[df[metric_col].astype(str).str.contains("revenue|sales", case=False, na=False)]
 
     if not revenue.empty:
-        ax3.plot(df.columns[1:], revenue.iloc[0, 1:], marker='o', label=company)
+        y_values = pd.to_numeric(revenue.iloc[0, 1:], errors='coerce')
+        ax3.plot(df.columns[1:], y_values, marker='o', label=company)
 
 ax3.set_title("Revenue Comparison")
 ax3.set_ylabel("Revenue")
@@ -105,7 +110,8 @@ for company in company_sheets:
     profit = df[df[metric_col].astype(str).str.contains("profit", case=False, na=False)]
 
     if not profit.empty:
-        ax4.plot(df.columns[1:], profit.iloc[0, 1:], marker='o', label=company)
+        y_values = pd.to_numeric(profit.iloc[0, 1:], errors='coerce')
+        ax4.plot(df.columns[1:], y_values, marker='o', label=company)
 
 ax4.set_title("Profit Comparison")
 ax4.set_ylabel("Profit")
