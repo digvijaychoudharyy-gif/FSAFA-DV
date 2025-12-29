@@ -2,90 +2,106 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# -----------------------------
-# PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="Financial & Forensic Dashboard", layout="wide")
+st.set_page_config(page_title="Financial & Forensic Analysis", layout="wide")
 
 st.title("📊 Financial & Forensic Analysis Dashboard")
 
-# -----------------------------
-# DATA LOADING (FIXED CACHING)
-# -----------------------------
-excel_file = "FSAFAWAIExcel.xlsx"
-
+# ===============================
+# LOAD DATA
+# ===============================
 @st.cache_data
-def get_company_list(file):
-    # Just gets the sheet names
-    return pd.ExcelFile(file).sheet_names
+def load_data(file):
+    return pd.read_excel(file, sheet_name=None)
 
-@st.cache_data
-def load_company_data(file, sheet):
-    # Returns a DataFrame (which is serializable)
-    return pd.read_excel(file, sheet_name=sheet)
+uploaded_file = st.file_uploader("FSAFAWAIExcel.xlsx", type=["xlsx"])
 
-try:
-    # Get names for the sidebar
-    company_list = get_company_list(excel_file)
-    company = st.sidebar.selectbox("Select Company", company_list)
+if uploaded_file:
+    sheets = load_data(uploaded_file)
+    company = st.selectbox("Select Company", list(sheets.keys()))
+    df = sheets[company]
 
-    # Load the specific sheet
-    df = load_company_data(excel_file, company)
-
-    # -----------------------------
-    # CLEAN DATA
-    # -----------------------------
-    df = df.dropna(how="all")
     df.columns = df.columns.astype(str)
-    
-    # Separate labels and values
-    metrics = df.iloc[:, 0].astype(str)
-    
-    # -----------------------------
-    # DASHBOARD LAYOUT
-    # -----------------------------
-    tab1, tab2 = st.tabs(["📈 Financial Analysis", "🧪 Forensic Analysis"])
 
+    # -----------------------------
     # FINANCIAL ANALYSIS
-    with tab1:
-        st.subheader(f"{company} – Financial Performance")
-        selected_metrics = st.multiselect(
-            "Select Financial Metrics",
-            options=metrics.tolist(),
-            default=metrics.tolist()[:3] if len(metrics) > 3 else metrics.tolist()
-        )
+    # -----------------------------
+    st.header("📈 Financial Analysis")
 
-        for m in selected_metrics:
-            row_data = df[metrics == m].iloc[:, 1:].T
-            row_data.columns = [m]
-            st.line_chart(row_data)
+    financial_metrics = ["Revenue", "Net Profit", "EBITDA", "ROE", "ROA"]
 
+    available_metrics = [m for m in financial_metrics if m in df.iloc[:, 0].values]
+
+    selected_metrics = st.multiselect(
+        "Select Financial Metrics",
+        available_metrics,
+        default=available_metrics[:2]
+    )
+
+    for metric in selected_metrics:
+        data = df[df.iloc[:, 0] == metric].iloc[:, 1:].T
+        data.columns = [metric]
+        st.line_chart(data)
+
+    # -----------------------------
     # FORENSIC ANALYSIS
-    with tab2:
-        st.subheader(f"{company} – Forensic Analysis")
+    # -----------------------------
+    st.header("🧪 Forensic Analysis")
 
-        # Accruals
-        accrual_mask = metrics.str.contains("Accrual", case=False, na=False)
-        if accrual_mask.any():
-            st.markdown("### 📌 Accrual Analysis")
-            accrual_data = df[accrual_mask].iloc[:, 1:].T
-            accrual_data.columns = ["Accruals"]
-            st.line_chart(accrual_data)
+    score_map = {
+        "M-Score": "Beneish M-Score",
+        "Z-Score": "Altman Z-Score",
+        "F-Score": "Piotroski F-Score"
+    }
+
+    score_results = {}
+
+    for key, label in score_map.items():
+        row = df[df.iloc[:, 0].str.contains(key, case=False, na=False)]
+        if not row.empty:
+            values = row.iloc[:, 1:].T
+            values.columns = [label]
+            st.subheader(label)
+            st.line_chart(values)
+            score_results[label] = values.iloc[-1, 0]
+
+    # -----------------------------
+    # FORENSIC INTERPRETATION
+    # -----------------------------
+    st.subheader("🧠 Forensic Interpretation")
+
+    verdicts = []
+
+    if "Beneish M-Score" in score_results:
+        if score_results["Beneish M-Score"] > -2.22:
+            verdicts.append("⚠️ High probability of earnings manipulation (M-Score)")
         else:
-            st.info("No accrual data found.")
+            verdicts.append("✅ Low manipulation risk (M-Score)")
 
-        # Forensic Scores
-        score_keywords = ["M-Score", "Z-Score", "F-Score"]
-        score_mask = metrics.str.contains('|'.join(score_keywords), case=False, na=False)
-        score_df = df[score_mask]
+    if "Altman Z-Score" in score_results:
+        if score_results["Altman Z-Score"] < 1.8:
+            verdicts.append("❌ Financial distress risk (Z-Score)")
+        elif score_results["Altman Z-Score"] > 3:
+            verdicts.append("✅ Financially strong company")
+        else:
+            verdicts.append("⚠️ Grey zone financial health")
 
-        if not score_df.empty:
-            st.markdown("### 📊 Forensic Scores")
-            for _, row in score_df.iterrows():
-                st.write(f"**{row.iloc[0]}**")
-                st.area_chart(row.iloc[1:].dropna())
+    if "Piotroski F-Score" in score_results:
+        if score_results["Piotroski F-Score"] >= 7:
+            verdicts.append("✅ Strong fundamentals (F-Score)")
+        else:
+            verdicts.append("⚠️ Weak financial quality (F-Score)")
 
-except FileNotFoundError:
-    st.error(f"Could not find '{excel_file}'. Please check the filename on GitHub.")
-except Exception as e:
-    st.error(f"Error: {e}")
+    for v in verdicts:
+        st.write("•", v)
+
+    # -----------------------------
+    # FINAL DECISION
+    # -----------------------------
+    st.subheader("📌 Overall Company Assessment")
+
+    if verdicts.count("✅") >= 2:
+        st.success("Overall: FINANCIALLY STRONG COMPANY")
+    elif verdicts.count("⚠️") >= 2:
+        st.warning("Overall: MODERATE RISK COMPANY")
+    else:
+        st.error("Overall: HIGH RISK / WEAK FUNDAMENTALS")
