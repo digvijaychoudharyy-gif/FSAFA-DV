@@ -2,106 +2,119 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Financial & Forensic Analysis", layout="wide")
+# ---------------- CONFIG ----------------
+st.set_page_config(page_title="Financial & Forensic Analysis Dashboard", layout="wide")
 
-st.title("📊 Financial & Forensic Analysis Dashboard")
+FILE_PATH = "FSAFAWAIExcel.xlsx"
 
-# ===============================
-# LOAD DATA
-# ===============================
+companies = [
+    "Maruti Suzuki",
+    "Eicher Motors",
+    "Mahindra & Mahindra",
+    "Tata Motors",
+    "Ashok Leyland"
+]
+
+# ---------------- LOAD DATA ----------------
 @st.cache_data
-def load_data(file):
-    return pd.read_excel(file, sheet_name=None)
+def load_data():
+    data = {}
+    for company in companies:
+        data[company] = pd.read_excel(FILE_PATH, sheet_name=company)
+    return data
 
-uploaded_file = st.file_uploader("FSAFAWAIExcel.xlsx", type=["xlsx"])
+data = load_data()
 
-if uploaded_file:
-    sheets = load_data(uploaded_file)
-    company = st.selectbox("Select Company", list(sheets.keys()))
-    df = sheets[company]
+# ---------------- TITLE ----------------
+st.title("📊 Financial & Forensic Analysis Dashboard")
+st.markdown("**Data Source:** Uploaded Excel File (Static Analysis)")
 
-    df.columns = df.columns.astype(str)
+# ============================================================
+# SECTION 1 — FORENSIC ANALYSIS
+# ============================================================
+st.header("🔍 Forensic Accounting Analysis")
 
-    # -----------------------------
-    # FINANCIAL ANALYSIS
-    # -----------------------------
-    st.header("📈 Financial Analysis")
+# ---- Accruals Line Chart ----
+st.subheader("Accruals Trend (2014–2025)")
 
-    financial_metrics = ["Revenue", "Net Profit", "EBITDA", "ROE", "ROA"]
+fig, ax = plt.subplots(figsize=(10,5))
 
-    available_metrics = [m for m in financial_metrics if m in df.iloc[:, 0].values]
+for company in companies:
+    df = data[company]
+    accrual_row = df[df["Metric"].str.contains("Accrual", case=False, na=False)]
+    if not accrual_row.empty:
+        years = [col for col in df.columns if "Mar" in str(col)]
+        values = accrual_row[years].values.flatten()
+        ax.plot(years, values, marker="o", label=company)
 
-    selected_metrics = st.multiselect(
-        "Select Financial Metrics",
-        available_metrics,
-        default=available_metrics[:2]
-    )
+ax.set_title("Accrual Trend Comparison")
+ax.set_ylabel("Accrual Value")
+ax.set_xlabel("Year")
+ax.legend()
+st.pyplot(fig)
 
-    for metric in selected_metrics:
-        data = df[df.iloc[:, 0] == metric].iloc[:, 1:].T
-        data.columns = [metric]
-        st.line_chart(data)
+# ---- M-Score, Z-Score, F-Score ----
+st.subheader("Forensic Scores Comparison")
 
-    # -----------------------------
-    # FORENSIC ANALYSIS
-    # -----------------------------
-    st.header("🧪 Forensic Analysis")
+fig2, ax2 = plt.subplots(figsize=(10,5))
 
-    score_map = {
-        "M-Score": "Beneish M-Score",
-        "Z-Score": "Altman Z-Score",
-        "F-Score": "Piotroski F-Score"
-    }
+for company in companies:
+    df = data[company]
+    score_row = df[df["Metric"].isin(["M Score", "Z Score", "F Score"])]
+    if not score_row.empty:
+        scores = score_row.set_index("Metric").mean(axis=1)
+        ax2.plot(scores.index, scores.values, marker="o", label=company)
 
-    score_results = {}
+ax2.set_title("M-Score, Z-Score & F-Score Comparison")
+ax2.set_ylabel("Score Value")
+ax2.legend()
+st.pyplot(fig2)
 
-    for key, label in score_map.items():
-        row = df[df.iloc[:, 0].str.contains(key, case=False, na=False)]
-        if not row.empty:
-            values = row.iloc[:, 1:].T
-            values.columns = [label]
-            st.subheader(label)
-            st.line_chart(values)
-            score_results[label] = values.iloc[-1, 0]
+# ============================================================
+# SECTION 2 — FINANCIAL ANALYSIS
+# ============================================================
+st.header("📈 Financial Performance Analysis")
 
-    # -----------------------------
-    # FORENSIC INTERPRETATION
-    # -----------------------------
-    st.subheader("🧠 Forensic Interpretation")
+# ---- Revenue Trend ----
+st.subheader("Revenue Trend (All Companies)")
 
-    verdicts = []
+fig3, ax3 = plt.subplots(figsize=(10,5))
 
-    if "Beneish M-Score" in score_results:
-        if score_results["Beneish M-Score"] > -2.22:
-            verdicts.append("⚠️ High probability of earnings manipulation (M-Score)")
-        else:
-            verdicts.append("✅ Low manipulation risk (M-Score)")
+for company in companies:
+    df = data[company]
+    rev = df[df["Metric"].str.contains("Sales", case=False)]
+    if not rev.empty:
+        years = [col for col in df.columns if "Mar" in str(col)]
+        ax3.plot(years, rev[years].values.flatten(), marker="o", label=company)
 
-    if "Altman Z-Score" in score_results:
-        if score_results["Altman Z-Score"] < 1.8:
-            verdicts.append("❌ Financial distress risk (Z-Score)")
-        elif score_results["Altman Z-Score"] > 3:
-            verdicts.append("✅ Financially strong company")
-        else:
-            verdicts.append("⚠️ Grey zone financial health")
+ax3.set_title("Revenue Comparison")
+ax3.set_ylabel("Revenue")
+ax3.legend()
+st.pyplot(fig3)
 
-    if "Piotroski F-Score" in score_results:
-        if score_results["Piotroski F-Score"] >= 7:
-            verdicts.append("✅ Strong fundamentals (F-Score)")
-        else:
-            verdicts.append("⚠️ Weak financial quality (F-Score)")
+# ---- Profit Trend ----
+st.subheader("Profit Trend")
 
-    for v in verdicts:
-        st.write("•", v)
+fig4, ax4 = plt.subplots(figsize=(10,5))
 
-    # -----------------------------
-    # FINAL DECISION
-    # -----------------------------
-    st.subheader("📌 Overall Company Assessment")
+for company in companies:
+    df = data[company]
+    profit = df[df["Metric"].str.contains("Profit", case=False)]
+    if not profit.empty:
+        years = [col for col in df.columns if "Mar" in str(col)]
+        ax4.plot(years, profit[years].values.flatten(), marker="o", label=company)
 
-    if verdicts.count("✅") >= 2:
-        st.success("Overall: FINANCIALLY STRONG COMPANY")
-    elif verdicts.count("⚠️") >= 2:
-        st.warning("Overall: MODERATE RISK COMPANY")
-    else:
-        st.error("Overall: HIGH RISK / WEAK FUNDAMENTALS")
+ax4.set_title("Profit Comparison")
+ax4.set_ylabel("Profit")
+ax4.legend()
+st.pyplot(fig4)
+
+# ============================================================
+# SECTION 3 — USER INTERPRETATION SPACE
+# ============================================================
+st.header("📝 Analyst Interpretation & Observations")
+
+st.text_area(
+    "Write your analysis, insights, red flags, and conclusions here:",
+    height=200
+)
