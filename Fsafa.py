@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 # ---------------- CONFIG ----------------
 st.set_page_config(page_title="Financial & Forensic Dashboard", layout="wide")
 
-# Path to your file
 FILE_PATH = "FSAFAWAIExcel.xlsx"
 
 # ---------------- LOAD DATA ----------------
@@ -14,11 +13,8 @@ def load_data():
     try:
         xls = pd.ExcelFile(FILE_PATH)
         data = {}
-        # Loading all sheets found in the file
         for sheet in xls.sheet_names:
             df = pd.read_excel(xls, sheet_name=sheet)
-            # Standardize the first column name to 'Metric' for search consistency
-            df.columns.values[0] = "Metric"
             data[sheet] = df
         return data
     except Exception as e:
@@ -27,24 +23,30 @@ def load_data():
 
 data = load_data()
 
-# Helper function to extract clean numeric data for plotting
+# IMPROVED: Robust function to find metrics by looking at the FIRST column
 def get_plot_data(df, metric_keyword):
-    # Find row where metric name contains the keyword
-    row = df[df["Metric"].astype(str).str.contains(metric_keyword, case=False, na=False)]
+    # 1. Identify the first column (where labels like 'Sales' or 'M Score' live)
+    label_col = df.columns[0]
+    
+    # 2. Find the row where that first column contains our keyword
+    mask = df[label_col].astype(str).str.contains(metric_keyword, case=False, na=False)
+    row = df[mask]
+    
     if row.empty:
         return None, None
     
-    # Extract years (columns 1 to 13 usually) and values
-    # We filter out columns that are unnamed or contain 'Unnamed'
-    cols = [c for c in df.columns[1:] if "Unnamed" not in str(c)]
-    years = cols
-    values = pd.to_numeric(row[cols].iloc[0], errors='coerce')
+    # 3. Identify year columns (usually everything except the first label column)
+    # We filter out columns named 'Unnamed' which are common in Excel exports
+    year_cols = [c for c in df.columns[1:] if "Unnamed" not in str(c)]
+    
+    # 4. Extract and clean values
+    years = year_cols
+    values = pd.to_numeric(row[year_cols].iloc[0], errors='coerce')
     
     return years, values
 
 if data:
-    company_sheets = list(data.keys())[:5] # Analyze top 5 companies
-    
+    company_sheets = list(data.keys())[:5]
     st.title("📊 Financial & Forensic Analysis Dashboard")
 
     # =========================================================
@@ -65,7 +67,7 @@ if data:
             
             ax.set_title(f"{score_name} Trend")
             ax.set_ylabel("Score Value")
-            plt.xticks(rotation=45) # Prevents year overlap
+            plt.xticks(rotation=45)
             ax.legend(prop={'size': 7})
             st.pyplot(fig)
 
@@ -73,13 +75,13 @@ if data:
     # 2. ACCRUALS ANALYSIS
     # =========================================================
     st.header("📉 Accruals Analysis")
-    fig_acc, ax_acc = plt.subplots(figsize=(12, 5))
+    fig_acc, ax_acc = plt.subplots(figsize=(10, 4))
     for company in company_sheets:
         years, values = get_plot_data(data[company], "Accruals")
         if values is not None:
-            ax_acc.plot(years, values, marker='s', linestyle='--', label=company)
+            ax_acc.plot(years, values, marker='s', label=company)
     
-    ax_acc.set_title("Accruals Trend Comparison (2014-2025)")
+    ax_acc.set_title("Accruals Trend Comparison")
     plt.xticks(rotation=45)
     ax_acc.legend()
     st.pyplot(fig_acc)
@@ -113,15 +115,8 @@ if data:
         ax_prof.legend()
         st.pyplot(fig_prof)
 
-    # =========================================================
-    # 4. INTERPRETATION
-    # =========================================================
     st.header("📝 Analyst Interpretation")
-    st.text_area(
-        "Enter forensic findings and notes here:",
-        placeholder="E.g., Maruti Suzuki shows high earnings quality with non-discretionary accruals...",
-        height=200
-    )
+    st.text_area("Findings:", height=200)
 
 else:
-    st.error("Please ensure 'FSAFA WAI Excel.xlsx' is uploaded to the same directory as the script.")
+    st.error("Please ensure 'FSAFA WAI Excel.xlsx' is in the app directory.")
