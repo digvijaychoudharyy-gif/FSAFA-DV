@@ -2,109 +2,68 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# -----------------------------
-# PAGE CONFIG
-# -----------------------------
-st.set_page_config(page_title="Financial & Forensic Dashboard", layout="wide")
+# 1. Page Setup
+st.set_page_config(page_title="Financial Dashboard", layout="wide")
 
-st.title("📊 Financial & Forensic Analysis Dashboard")
+# 2. File Loading with Error Handling
+excel_file = "FSAFAWAIExcel.xlsx"
 
-# -----------------------------
-# LOAD EXCEL FILE
-# -----------------------------
 @st.cache_data
-def load_excel(file):
-    return pd.ExcelFile(file)
+def load_data(file):
+    try:
+        return pd.ExcelFile(file)
+    except Exception as e:
+        st.error(f"Could not read file: {e}")
+        return None
 
-excel_file = "FSAFA WAI Excel.xlsx"
-xls = load_excel(excel_file)
+xls = load_data(excel_file)
 
-# -----------------------------
-# COMPANY SELECTION
-# -----------------------------
-company = st.sidebar.selectbox("Select Company", xls.sheet_names)
-df = pd.read_excel(xls, sheet_name=company)
+if xls:
+    # Sidebar - Sheet Selection
+    company = st.sidebar.selectbox("Select Company", xls.sheet_names)
+    
+    # Load sheet and clean
+    df = pd.read_excel(xls, sheet_name=company)
+    df = df.dropna(how="all").reset_index(drop=True)
+    
+    # Identify Header and Data
+    # Assuming Column 0 is Metric Names, and Column 1+ are Years
+    df.columns = [str(col).strip() for col in df.columns]
+    metrics = df.iloc[:, 0].astype(str).str.strip()
+    
+    tab1, tab2 = st.tabs(["📈 Financials", "🧪 Forensic"])
 
-# -----------------------------
-# CLEAN DATA
-# -----------------------------
-df = df.dropna(how="all")
-df.columns = df.columns.astype(str)
+    # --- TAB 1: FINANCIALS ---
+    with tab1:
+        st.subheader(f"Performance: {company}")
+        selected = st.multiselect("Select Metrics", options=metrics.tolist(), default=metrics.tolist()[:2])
+        
+        for m in selected:
+            # Extract row, skip the label column, and transpose for charting
+            row = df[metrics == m].iloc[:, 1:].T
+            row.columns = [m]
+            row.index.name = "Year"
+            st.line_chart(row)
 
-# Separate metrics and years
-metrics = df.iloc[:, 0]
-data = df.iloc[:, 1:]
+    # --- TAB 2: FORENSIC ---
+    with tab2:
+        st.subheader("Forensic Indicators")
+        
+        # Search for any row containing 'Score' or 'Accrual'
+        forensic_mask = metrics.str.contains("Score|Accrual", case=False, na=False)
+        forensic_df = df[forensic_mask]
 
-# Convert numeric where possible
-data = data.apply(pd.to_numeric, errors="coerce")
-
-# -----------------------------
-# DASHBOARD LAYOUT
-# -----------------------------
-tab1, tab2 = st.tabs(["📈 Financial Analysis", "🧪 Forensic Analysis"])
-
-# =====================================================
-# FINANCIAL ANALYSIS
-# =====================================================
-with tab1:
-    st.subheader(f"{company} – Financial Performance")
-
-    selected_metrics = st.multiselect(
-        "Select Financial Metrics",
-        options=metrics.tolist(),
-        default=metrics[:3].tolist()
-    )
-
-    for metric in selected_metrics:
-        row = df[df.iloc[:, 0] == metric].iloc[:, 1:].T
-        row.columns = [metric]
-        st.line_chart(row)
-
-# =====================================================
-# FORENSIC ANALYSIS
-# =====================================================
-with tab2:
-    st.subheader(f"{company} – Forensic Analysis")
-
-    # --- Accruals ---
-    st.markdown("### 📌 Accrual Analysis")
-
-    accrual_row = df[df.iloc[:, 0].str.contains("Accrual", case=False, na=False)]
-
-    if not accrual_row.empty:
-        accrual_data = accrual_row.iloc[:, 1:].T
-        accrual_data.columns = ["Accruals"]
-
-        st.line_chart(accrual_data)
-
-        st.markdown("**Positive Accrual Years Highlighted:**")
-        positive_years = accrual_data[accrual_data["Accruals"] > 0]
-        st.dataframe(positive_years)
-    else:
-        st.info("No accrual data found in this sheet.")
-
-    # --- Scores Section ---
-    st.markdown("### 📊 Forensic Scores")
-
-    score_keywords = ["M-Score", "Z-Score", "F-Score"]
-    score_rows = df[df.iloc[:, 0].str.contains('|'.join(score_keywords), case=False, na=False)]
-
-    if not score_rows.empty:
-        for _, row in score_rows.iterrows():
-            score_name = row.iloc[0]
-            score_values = row.iloc[1:].dropna()
-            st.line_chart(score_values, height=250)
-    else:
-        st.info("No forensic score data available.")
-
-    # -----------------------------
-    # COMPANY NOTES / PARAGRAPHS
-    # -----------------------------
-    st.markdown("### 📝 Company Notes")
-
-    text_rows = df[df.iloc[:, 1:].isna().all(axis=1)]
-    if not text_rows.empty:
-        for note in text_rows.iloc[:, 0]:
-            st.write("•", note)
-    else:
-        st.info("No descriptive text available for this company.")
+        if not forensic_df.empty:
+            for _, row in forensic_df.iterrows():
+                label = row.iloc[0]
+                data_points = pd.to_numeric(row.iloc[1:], errors='coerce').dropna()
+                
+                if not data_points.empty:
+                    st.write(f"**{label}**")
+                    st.area_chart(data_points)
+        else:
+            st.info("No forensic metrics (Scores/Accruals) found.")
+            
+        # Display raw data for transparency
+        with st.expander("View Raw Data Table"):
+            st.dataframe(df)
