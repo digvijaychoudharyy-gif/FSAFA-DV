@@ -21,7 +21,7 @@ def load_data(file):
     data = {sheet: xls.parse(sheet) for sheet in xls.sheet_names}
     return data
 
-uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+uploaded_file = st.file_uploader(FSAFA_WAI_Excel.xlsx, type=["xlsx"])
 
 if uploaded_file is None:
     st.warning("Please upload the Excel file to continue.")
